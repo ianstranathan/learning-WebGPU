@@ -4,8 +4,6 @@
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu.h>
 
-
-
 typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -15,7 +13,11 @@ typedef int8_t  i8;
 typedef int16_t i16;
 typedef int32_t i32;
 
-
+/*
+  TODO:
+  Specifying the byte stride of a vertex is approaching the limit of a magic number
+   See: definition of vertexCount & vertexBufferLayout.arrayStride
+ */
 #ifndef DEBUG
 
 void device_lost_callback(WGPUDeviceLostReason reason, char const* message, void* /* pUserData */)
@@ -257,7 +259,7 @@ void Application::MainLoop()
 	renderPassColorAttachment.resolveTarget = nullptr;
 	renderPassColorAttachment.loadOp = WGPULoadOp_Clear;
 	renderPassColorAttachment.storeOp = WGPUStoreOp_Store;
-	renderPassColorAttachment.clearValue = WGPUColor{ 0.9, 0.1, 0.2, 1.0 };
+	renderPassColorAttachment.clearValue = WGPUColor{ 0.2, 0.2, 0.2, 1.0 };
 	renderPassDesc.colorAttachmentCount = 1;
 	renderPassDesc.colorAttachments = &renderPassColorAttachment;
 	
@@ -347,14 +349,42 @@ WGPUTextureView Application::GetNextSurfaceTextureView()
 // (Memoized version of the state necessary to draw something)
 
 const char* shader_code_str = R"(
+/**
+ * A structure with fields labeled with vertex attribute locations can be used
+ * as input to the entry point of a shader.
+ */
+struct VertexInput {
+	@location(0) position: vec2f,
+	@location(1) color: vec3f,
+};
+
+/**
+ * A structure with fields labeled with builtins and locations can also be used
+ * as *output* of the vertex shader, which is also the input of the fragment
+ * shader.
+ */
+struct VertexOutput {
+	@builtin(position) position: vec4f,
+	// The location here does not refer to a vertex attribute, it just means
+	// that this field must be handled by the rasterizer.
+	// (It can also refer to another field of another struct that would be used
+	// as input to the fragment shader.)
+	@location(0) color: vec3f,
+};
+
 @vertex
-fn vs_main(@location(0) in_vertex_position: vec2f) -> @builtin(position) vec4f {
-	return vec4f(in_vertex_position, 0.0, 1.0);
+fn vs_main(in: VertexInput) -> VertexOutput {
+	//                         ^^^^^^^^^^^^ We return a custom struct
+	var out: VertexOutput; // create the output struct
+	out.position = vec4f(in.position, 0.0, 1.0); // same as what we used to directly return
+	out.color = in.color; // forward the color attribute to the fragment shader
+	return out;
 }
 
 @fragment
-fn fs_main() -> @location(0) vec4f {
-	return vec4f(0.0, 0.4, 1.0, 1.0);
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+	//     ^^^^^^^^^^^^^^^^ Use for instance the same struct as what the vertex outputs
+	return vec4f(in.color, 1.0); // use the interpolated color coming from the vertex shader
 }
 )";
 
@@ -443,15 +473,23 @@ void Application::InitializePipeline()
 	// ------------------------- Configure the vertex pipeline
 	// We use one vertex buffer
 	WGPUVertexBufferLayout vertexBufferLayout{};
-	WGPUVertexAttribute positionAttrib;
+	std::vector<WGPUVertexAttribute> vertexAttribs(2);
+
+	// ------------------------- position attrib
+	vertexAttribs[0].shaderLocation = 0; // @location(0)
+	vertexAttribs[0].format = WGPUVertexFormat_Float32x2; // vec2 in shader
+	vertexAttribs[0].offset = 0;
+
+	// ------------------------- color attrib
+	vertexAttribs[1].shaderLocation = 1; // @location(1)
+	vertexAttribs[1].format = WGPUVertexFormat_Float32x3; // vec3 in shader
+	vertexAttribs[1].offset = 2 * sizeof(float); // offset past the vertex data
+
 	// 
-	positionAttrib.shaderLocation = 0;                  // @location(...)
-	positionAttrib.format = WGPUVertexFormat_Float32x2; // vec2f in the shader
-	positionAttrib.offset = 0;
-	
-	vertexBufferLayout.attributeCount = 1;
-	vertexBufferLayout.attributes = &positionAttrib;
-	vertexBufferLayout.arrayStride = 2 * sizeof(float);
+	vertexBufferLayout.attributeCount = static_cast<u32>(vertexAttribs.size());
+	vertexBufferLayout.attributes = vertexAttribs.data();
+
+	vertexBufferLayout.arrayStride = 5 * sizeof(float);
 	vertexBufferLayout.stepMode = WGPUVertexStepMode_Vertex;
 	
 	pipelineDesc.vertex.bufferCount = 1;
@@ -545,14 +583,11 @@ WGPULimits Application::GetRequiredLimits(WGPUAdapter adapter) const
 	WGPULimits requiredLimits{};
 	setDefault(requiredLimits);
 
-	// We use at most 1 vertex attribute for now
-	requiredLimits.maxVertexAttributes = 1;
-	// We should also tell that we use 1 vertex buffers
+	
+	requiredLimits.maxVertexAttributes = 2;
 	requiredLimits.maxVertexBuffers = 1;
-	// Maximum size of a buffer is 6 vertices of 2 float each
-	requiredLimits.maxBufferSize = 6 * 2 * sizeof(float);
-	// Maximum stride between 2 consecutive vertices in the vertex buffer
-	requiredLimits.maxVertexBufferArrayStride = 2 * sizeof(float);
+	requiredLimits.maxBufferSize = 6 * 5 * sizeof(float);          // 6 vertices of 5 float each
+	requiredLimits.maxVertexBufferArrayStride = 5 * sizeof(float); // byte stride between 2 consecutive vertices
 
 	// These two limits are different because they are "minimum" limits,
 	// they are the only ones we are may forward from the adapter's supported
@@ -567,18 +602,19 @@ void Application::InitializeBuffers()
 {
 	// Vertex buffer data
 	std::vector<float> vertexData = {
+		// x0,  y0,  r0,  g0,  b0
+
 		// triangle 1
-		-0.5f, -0.5f,
-		+0.5f, -0.5f,
-		+0.0f, +0.5f,
-	
+		-0.5f, -0.5, 1.0, 0.0, 0.0,
+		+0.5f, +0.5, 0.0, 1.0, 0.0,
+		-0.5f, +0.5, 0.0, 0.0, 1.0,
 		// triangle 2
-		-0.55f, -0.5f,
-		-0.05f, +0.5f,
-		-0.55f, +0.5f
+		+0.5f, -0.5, 1.0, 1.0, 0.0,
+		+0.5f, +0.5, 1.0, 0.0, 1.0,
+		-0.5f, -0.5, 0.0, 1.0, 1.0
 	};
 	
-	vertexCount = static_cast<u32>(vertexData.size() / 2);
+	vertexCount = static_cast<u32>(vertexData.size() / 5);
 	
 	// Create vertex buffer
 	WGPUBufferDescriptor bufferDesc{};
