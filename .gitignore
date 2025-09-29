@@ -1,0 +1,52 @@
+# -------------------------------------------------- ignore the local project stuff
+build/
+lib/
+notes/
+glfw/
+
+# -------------------------------------------------- ignore utility batch files
+*.bat
+
+# -------------------------------------------------- Emacs stuff
+*~
+\#*#
+*.elc
+auto-save-list
+tramp
+.#*
+
+# Org-mode specific files
+.org-id-locations
+*_archive
+
+# Flymake-mode files
+*_flymake.*
+
+# Eshell files
+/eshell/history
+/eshell/lastdir
+
+# ELPA packages (if managing packages manually)
+/elpa/
+
+# RefTeX files
+*.rel
+
+# AUCTeX auto folder
+/auto/
+
+# Cask packages (if using Cask)
+.cask/
+dist/
+
+# Flycheck files
+flycheck_*.el
+
+# Emacs server authentication directory
+/server/
+
+# Projectile files
+.projectile
+
+# Directory configuration
+.dir-locals.el

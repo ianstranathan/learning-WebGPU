@@ -1,0 +1,534 @@
+
+/**
+ * This file is part of the "Learn WebGPU for C++" book.
+ *   https://github.com/eliemichel/LearnWebGPU
+ *
+ * MIT License
+ * Copyright (c) 2022-2024 Elie Michel
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+
+#include <iostream>
+#include <vector>
+#include <cassert>
+#include "webgpu/webgpu.h"
+
+
+struct UserData
+{
+	WGPUAdapter adapter = nullptr;
+	WGPUDevice device = nullptr;
+	bool requestEnded = false;
+};
+void onAdapterRequestEnded (WGPURequestAdapterStatus status, WGPUAdapter adapter, char const * message, void * pUserData)
+{
+	
+	UserData& userData = *reinterpret_cast<UserData*>(pUserData);
+	if (status == WGPURequestAdapterStatus_Success) {
+		userData.adapter = adapter;
+	} else {
+		std::cout << "Could not get WebGPU adapter: " << message << std::endl;
+	}
+	userData.requestEnded = true;
+};
+
+
+WGPUAdapter requestAdapterSync(WGPUInstance instance, WGPURequestAdapterOptions const* options)
+{
+	// A simple structure holding the local information shared with the
+	// onAdapterRequestEnded callback.
+	// struct UserData {
+	// 	WGPUAdapter adapter = nullptr;
+	// 	bool requestEnded = false;
+	// };
+	UserData userData;
+
+	// Callback called by wgpuInstanceRequestAdapter when the request returns
+	// This is a C++ lambda function, but could be any function defined in the
+	// global scope. It must be non-capturing (the brackets [] are empty) so
+	// that it behaves like a regular C function pointer, which is what
+	// wgpuInstanceRequestAdapter expects (WebGPU being a C API). The workaround
+	// is to convey what we want to capture through the pUserData pointer,
+	// provided as the last argument of wgpuInstanceRequestAdapter and received
+	// by the callback as its last argument.
+	// auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status, WGPUAdapter adapter, char const * message, void * pUserData) {
+	// 	UserData& userData = *reinterpret_cast<UserData*>(pUserData);
+	// 	if (status == WGPURequestAdapterStatus_Success) {
+	// 		userData.adapter = adapter;
+	// 	} else {
+	// 		std::cout << "Could not get WebGPU adapter: " << message << std::endl;
+	// 	}
+	// 	userData.requestEnded = true;
+	// };
+
+	// Call to the WebGPU request adapter procedure
+	// typedef struct WGPURequestAdapterCallbackInfo {
+	// 	WGPUChainedStruct const * nextInChain;
+	// 	WGPUCallbackMode mode;
+	// 	WGPURequestAdapterCallback callback;
+	// 	WGPU_NULLABLE void* userdata1;
+	// 	WGPU_NULLABLE void* userdata2;
+	// } WGPURequestAdapterCallbackInfo WGPU_STRUCTURE_ATTRIBUTE;
+
+	WGPURequestAdapterCallbackInfo callbackinfo = {0};
+	callbackinfo.callback = (WGPURequestAdapterCallback)onAdapterRequestEnded;
+	callbackinfo.userdata1 = &userData;
+	wgpuInstanceRequestAdapter(
+		instance /* equivalent of navigator.gpu */,
+		options,
+		callbackinfo);
+		// onAdapterRequestEnded,
+		// (void*)&userData
+
+
+	// We wait until userData.requestEnded gets true
+	assert(userData.requestEnded);
+
+	return userData.adapter;
+}
+
+void inspectAdapter(WGPUAdapter adapter)
+{
+    // wgpuAdapterGetLimits(WGPUAdapter adapter, WGPULimits * limits)
+		
+	// WGPUSupportedLimits supportedLimits = {};
+	WGPULimits supportedLimits = {0};
+	supportedLimits.nextInChain = nullptr;
+	bool success = wgpuAdapterGetLimits(adapter, &supportedLimits);
+	if (success) {
+		std::cout << "Adapter limits:" << std::endl;
+		std::cout << " - maxTextureDimension1D: " << supportedLimits.maxTextureDimension1D << std::endl;
+		std::cout << " - maxTextureDimension2D: " << supportedLimits.maxTextureDimension2D << std::endl;
+		std::cout << " - maxTextureDimension3D: " << supportedLimits.maxTextureDimension3D << std::endl;
+		std::cout << " - maxTextureArrayLayers: " << supportedLimits.maxTextureArrayLayers << std::endl;
+	}
+
+	// std::vector<WGPUFeatureName> features;
+	
+	WGPUSupportedFeatures available_features = {0};
+
+	// First call to get the count
+	wgpuAdapterGetFeatures(adapter, &available_features);
+
+	// Allocate the vector to hold the available_features
+	std::vector<WGPUFeatureName> features(available_features.featureCount);
+
+	// Point the struct to the vector's internal buffer
+	available_features.features = features.data();
+
+	// Second call to actually populate the list
+	wgpuAdapterGetFeatures(adapter, &available_features);
+	
+	// Call the function a first time with a null return address, just to get
+	// the entry count.
+	// size_t featureCount = wgpuAdapterEnumerateFeatures(adapter, nullptr);
+
+	// // Allocate memory (could be a new, or a malloc() if this were a C program)
+	// features.resize(featureCount);
+
+	// // Call the function a second time, with a non-null return address
+	// wgpuAdapterEnumerateFeatures(adapter, features.data());
+
+	// std::cout << "Adapter features:" << std::endl;
+	// std::cout << std::hex; // Write integers as hexadecimal to ease comparison with webgpu.h literals
+	// for (auto f : features) {
+	// 	std::cout << " - 0x" << f << std::endl;
+	// }
+	// std::cout << std::dec; // Restore decimal numbers
+	// WGPUAdapterProperties properties = {};
+	// properties.nextInChain = nullptr;
+	// wgpuAdapterGetProperties(adapter, &properties);
+	// std::cout << "Adapter properties:" << std::endl;
+	// std::cout << " - vendorID: " << properties.vendorID << std::endl;
+	// if (properties.vendorName) {
+	// 	std::cout << " - vendorName: " << properties.vendorName << std::endl;
+	// }
+	// if (properties.architecture) {
+	// 	std::cout << " - architecture: " << properties.architecture << std::endl;
+	// }
+	// std::cout << " - deviceID: " << properties.deviceID << std::endl;
+	// if (properties.name) {
+	// 	std::cout << " - name: " << properties.name << std::endl;
+	// }
+	// if (properties.driverDescription) {
+	// 	std::cout << " - driverDescription: " << properties.driverDescription << std::endl;
+	// }
+	// std::cout << std::hex;
+	// std::cout << " - adapterType: 0x" << properties.adapterType << std::endl;
+	// std::cout << " - backendType: 0x" << properties.backendType << std::endl;
+	// std::cout << std::dec; // Restore decimal numbers
+	WGPUAdapterInfo info = {};
+	info.nextInChain = nullptr;  // No extension chains
+
+	wgpuAdapterGetInfo(adapter, &info);
+
+	std::cout << "Adapter info:" << std::endl;
+	std::cout << " - vendorID: " << info.vendorID << std::endl;
+
+	if (info.vendor.data)
+	{
+		std::cout << " - vendor: " << info.vendor.data << std::endl;
+	}
+	if (info.architecture.data)
+	{
+		std::cout << " - architecture: " << info.architecture.data << std::endl;
+	}
+
+	std::cout << " - deviceID: " << info.deviceID << std::endl;
+
+	if (info.device.data) {
+		std::cout << " - device name: " << info.device.data << std::endl;
+	}
+	if (info.description.data) {
+		std::cout << " - driver description: " << info.description.data << std::endl;
+	}
+
+	std::cout << std::hex;
+	std::cout << " - adapterType: 0x" << info.adapterType << std::endl;
+	std::cout << " - backendType: 0x" << info.backendType << std::endl;
+	std::cout << std::dec;
+}
+
+void onDeviceRequestEnded (WGPURequestDeviceStatus status,
+						   WGPUDevice device,
+						   char const * message, void * pUserData)
+{
+	UserData& userData = *reinterpret_cast<UserData*>(pUserData);
+	if (status == WGPURequestDeviceStatus_Success) {
+		userData.device = device;
+	} else {
+		std::cout << "Could not get WebGPU device: " << message << std::endl;
+	}
+	userData.requestEnded = true;
+};
+
+WGPUDevice requestDeviceSync(WGPUAdapter adapter, WGPUDeviceDescriptor const * descriptor) {
+	// struct UserData {
+	// 	WGPUDevice device = nullptr;
+	// 	bool requestEnded = false;
+	// };
+	UserData userData;
+
+	// auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status, WGPUDevice device, char const * message, void * pUserData) {
+	// 	UserData& userData = *reinterpret_cast<UserData*>(pUserData);
+	// 	if (status == WGPURequestDeviceStatus_Success) {
+	// 		userData.device = device;
+	// 	} else {
+	// 		std::cout << "Could not get WebGPU device: " << message << std::endl;
+	// 	}
+	// 	userData.requestEnded = true;
+	// };
+
+
+	// ---------- Correct signatures from webgpu.h:
+	// WGPU_EXPORT WGPUFuture wgpuAdapterRequestDevice(WGPUAdapter adapter,
+	// 												WGPU_NULLABLE WGPUDeviceDescriptor const * descriptor,
+	// 												WGPURequestDeviceCallbackInfo callbackInfo);
+
+	// WGPURequestDeviceCallbackInfo callback_info = {0};
+	// typedef struct WGPURequestDeviceCallbackInfo
+	// {
+	// 	WGPUChainedStruct const * nextInChain;
+	// 	WGPUCallbackMode mode;
+	// 	WGPURequestDeviceCallback callback;
+	// 	WGPU_NULLABLE void* userdata1;
+	// 	WGPU_NULLABLE void* userdata2;
+	// } WGPURequestDeviceCallbackInfo WGPU_STRUCTURE_ATTRIBUTE;
+
+	WGPURequestDeviceCallbackInfo callback_info = {0};
+	callback_info.callback = (WGPURequestDeviceCallback)onDeviceRequestEnded;
+	callback_info.userdata1 = &userData;
+	
+	wgpuAdapterRequestDevice(
+		adapter,
+		descriptor,
+		callback_info);
+		// onDeviceRequestEnded,
+		// (void*)&userData
+
+	assert(userData.requestEnded);
+
+	return userData.device;
+}
+
+void inspectDevice(WGPUDevice device) {
+	// typedef struct WGPUSupportedFeatures {
+	// 	size_t featureCount;
+	// 	WGPUFeatureName const * features;
+	// } WGPUSupportedFeatures WGPU_STRUCTURE_ATTRIBUTE;
+
+	// : initialize struct, make 2 calls (get count → allocate → fill list).
+	// call 1
+	WGPUSupportedFeatures supportedFeatures = {0};
+	wgpuDeviceGetFeatures(device, &supportedFeatures);
+	// allocate
+	std::vector<WGPUFeatureName> features(supportedFeatures.featureCount);
+	// Step 2: 
+	supportedFeatures.features = features.data(); // set structs feature ptr to the vectors
+	// fill list
+	wgpuDeviceGetFeatures(device, &supportedFeatures);
+	// wgpuDeviceEnumerateFeatures(device, features.data());
+
+	std::cout << "Device features:" << std::endl;
+	std::cout << std::hex;
+	for (auto f : features) {
+		std::cout << " - 0x" << f << std::endl;
+	}
+	std::cout << std::dec;
+
+	WGPULimits limits = {0};
+	bool success = wgpuDeviceGetLimits(device, &limits);
+	
+	if (success) {
+		std::cout << "Device limits:" << std::endl;
+		std::cout << " - maxTextureDimension1D: " << limits.maxTextureDimension1D << std::endl;
+		std::cout << " - maxTextureDimension2D: " << limits.maxTextureDimension2D << std::endl;
+		std::cout << " - maxTextureDimension3D: " << limits.maxTextureDimension3D << std::endl;
+		std::cout << " - maxTextureArrayLayers: " << limits.maxTextureArrayLayers << std::endl;
+		std::cout << " - maxBindGroups: " << limits.maxBindGroups << std::endl;
+		std::cout << " - maxDynamicUniformBuffersPerPipelineLayout: " << limits.maxDynamicUniformBuffersPerPipelineLayout << std::endl;
+		std::cout << " - maxDynamicStorageBuffersPerPipelineLayout: " << limits.maxDynamicStorageBuffersPerPipelineLayout << std::endl;
+		std::cout << " - maxSampledTexturesPerShaderStage: " << limits.maxSampledTexturesPerShaderStage << std::endl;
+		std::cout << " - maxSamplersPerShaderStage: " << limits.maxSamplersPerShaderStage << std::endl;
+		std::cout << " - maxStorageBuffersPerShaderStage: " << limits.maxStorageBuffersPerShaderStage << std::endl;
+		std::cout << " - maxStorageTexturesPerShaderStage: " << limits.maxStorageTexturesPerShaderStage << std::endl;
+		std::cout << " - maxUniformBuffersPerShaderStage: " << limits.maxUniformBuffersPerShaderStage << std::endl;
+		std::cout << " - maxUniformBufferBindingSize: " << limits.maxUniformBufferBindingSize << std::endl;
+		std::cout << " - maxStorageBufferBindingSize: " << limits.maxStorageBufferBindingSize << std::endl;
+		std::cout << " - minUniformBufferOffsetAlignment: " << limits.minUniformBufferOffsetAlignment << std::endl;
+		std::cout << " - minStorageBufferOffsetAlignment: " << limits.minStorageBufferOffsetAlignment << std::endl;
+		std::cout << " - maxVertexBuffers: " << limits.maxVertexBuffers << std::endl;
+		std::cout << " - maxVertexAttributes: " << limits.maxVertexAttributes << std::endl;
+		std::cout << " - maxVertexBufferArrayStride: " << limits.maxVertexBufferArrayStride << std::endl;
+		std::cout << " - maxInterStageShaderVariables: " << limits.maxInterStageShaderVariables << std::endl;
+		std::cout << " - maxComputeWorkgroupStorageSize: " << limits.maxComputeWorkgroupStorageSize << std::endl;
+		std::cout << " - maxComputeInvocationsPerWorkgroup: " << limits.maxComputeInvocationsPerWorkgroup << std::endl;
+		std::cout << " - maxComputeWorkgroupSizeX: " << limits.maxComputeWorkgroupSizeX << std::endl;
+		std::cout << " - maxComputeWorkgroupSizeY: " << limits.maxComputeWorkgroupSizeY << std::endl;
+		std::cout << " - maxComputeWorkgroupSizeZ: " << limits.maxComputeWorkgroupSizeZ << std::endl;
+		std::cout << " - maxComputeWorkgroupsPerDimension: " << limits.maxComputeWorkgroupsPerDimension << std::endl;
+	}
+}
+
+WGPUStringView label_maker(const char* _label)
+{
+	WGPUStringView ret = {.data = _label,
+						  .length = std::strlen(_label)};
+	return ret;
+}
+
+// ====================================================================================================
+// MINE
+// ----------------------------------------------------------------------------------------------------
+
+// #include <iostream>
+// #include <cstring>
+// #include <cassert>
+// #include "webgpu/webgpu.h"
+
+
+// // TODO: add onDeviceError to device initialization
+// // ====================================================================================================
+
+// WGPUStringView label_maker(const char* _label)
+// {
+// 	WGPUStringView ret = {.data = _label,
+// 						  .length = std::strlen(_label)};
+// 	return ret;
+// }
+
+ 
+// // typedef struct WGPUDeviceDescriptor {
+// 	// 	WGPUChainedStruct const * nextInChain;
+// 	// 	/**
+// 	// 	 * This is a \ref NonNullInputString.
+// 	// 	 */
+// 	// 	WGPUStringView label;
+// 	// 	size_t requiredFeatureCount;
+// 	// 	WGPUFeatureName const * requiredFeatures;
+// 	// 	WGPU_NULLABLE WGPULimits const * requiredLimits;
+// 	// 	WGPUQueueDescriptor defaultQueue;
+// 	// 	WGPUDeviceLostCallbackInfo deviceLostCallbackInfo;
+// 	// 	WGPUUncapturedErrorCallbackInfo uncapturedErrorCallbackInfo;
+// 	// } WGPUDeviceDescriptor WGPU_STRUCTURE_ATTRIBUTE;
+
+// 	// ====================
+// 	// typedef struct WGPUStringView {
+// 	// 	char const * WGPU_NULLABLE data;
+// 	// 	size_t length;
+// 	// } WGPUStringView;
+
+// 	//====================
+// 	// Typedef struct WGPUDeviceLostCallbackInfo {
+// 	// 	WGPUChainedStruct const * nextInChain;
+// 	// 	WGPUCallbackMode mode;
+// 	// 	WGPUDeviceLostCallback callback;
+// 	// 	WGPU_NULLABLE void* userdata1;
+// 	// 	WGPU_NULLABLE void* userdata2;
+// 	// } WGPUDeviceLostCallbackInfo WGPU_STRUCTURE_ATTRIBUTE;
+
+// void onDeviceLost (WGPUDeviceLostReason reason,
+// 				   char const* message,
+// 				   void* /* pUserData */)
+// {
+// 	std::cout << "Device lost: reason " << reason;
+// 	if (message) std::cout << " (" << message << ")";
+// 	std::cout << std::endl;
+// };
+
+
+// WGPUDeviceDescriptor make_device_descriptor( const char* _label)	
+// {
+// 	WGPUDeviceDescriptor deviceDesc = {0};
+// 	WGPUStringView deviceDescLabel = {.data = _label,
+// 									  .length = std::strlen(_label)};
+// 	WGPUStringView defaultQueueLabel = {.data = "The default queue",
+// 									  .length = std::strlen("The default queue")};
+// 	deviceDesc.label = deviceDescLabel;
+// 	deviceDesc.defaultQueue.label = defaultQueueLabel;
+// 	WGPUDeviceLostCallbackInfo _deviceCallbackInfo = {0};
+// 	_deviceCallbackInfo.callback = (WGPUDeviceLostCallback)onDeviceLost;
+// 	deviceDesc.deviceLostCallbackInfo = _deviceCallbackInfo;
+// 	return deviceDesc;
+// }
+	
+
+
+// // Common ====================================================================================================
+// struct UserData {
+// 	WGPUAdapter adapter = nullptr;
+// 	WGPUDevice  device  = nullptr;
+// 	bool adapter_request_ended = false;
+// 	bool device_request_ended = false;
+// };
+
+// void onDeviceRequestEnded (WGPURequestDeviceStatus status,
+// 						  WGPUDevice device,
+// 						  char const* message,
+// 						  void * pUserData)
+// {
+// 	UserData& userData = *reinterpret_cast<UserData*>(pUserData);
+// 	if (status == WGPURequestDeviceStatus_Success)
+// 	{
+// 		userData.device = device;
+// 	}
+// 	else
+// 	{
+// 		std::cout << "Could not get WebGPU device: " << message << std::endl;
+// 	}
+// 	userData.device_request_ended = true;
+// };
+
+
+// // Device ====================================================================================================
+// WGPUDevice requestDeviceSync(WGPUAdapter adapter,
+// 							 WGPUDeviceDescriptor const* descriptor)
+// {	
+// 	UserData userData;
+
+// 	// -- From webgpu.h
+// 	// struct WGPURequestDeviceCallbackInfo
+// 	// {
+// 	// 	WGPUChainedStruct const * nextInChain;
+// 	// 	WGPUCallbackMode mode;
+// 	// 	WGPURequestDeviceCallback callback;
+// 	// 	WGPU_NULLABLE void* userdata1;
+// 	// 	WGPU_NULLABLE void* userdata2;
+// 	// }
+// 	WGPURequestDeviceCallbackInfo callback_info  = {0};
+// 	callback_info.callback = (WGPURequestDeviceCallback)onDeviceRequestEnded;
+// 	callback_info.userdata1 = &userData;
+
+// 	// -- From webgpu.h
+// 	// wgpuAdapterRequestDevice(WGPUAdapter adapter,
+// 	// 						 WGPU_NULLABLE WGPUDeviceDescriptor const * descriptor,
+// 	// 						 WGPURequestDeviceCallbackInfo callbackInfo)
+// 	wgpuAdapterRequestDevice(
+// 		adapter,
+// 		descriptor,
+// 		callback_info
+// 	);
+
+// 	assert(userData.device_request_ended);
+
+// 	return userData.device;
+// }
+
+// void onAdapterRequestEnded (WGPURequestAdapterStatus status,
+// 							WGPUAdapter adapter,
+// 							char const* message,
+// 							void* pUserData)
+// {
+// 	// wgpuInstanceRequestAdapter expects a (void*) => cast userdata to a void* then undo that inside callback
+// 	UserData& userData = *reinterpret_cast<UserData*>(pUserData);
+// 	if (status == WGPURequestAdapterStatus_Success) {
+// 		userData.adapter = adapter;
+// 	}
+// 	else
+// 	{
+// 		std::cout << "Could not get WebGPU adapter: " << message << std::endl;
+// 	}
+// 	userData.adapter_request_ended = true;
+// };
+
+// //  -- NOTE: 
+// WGPUAdapter requestAdapterSync(WGPUInstance instance, WGPUSurface surface)
+// 							   //WGPURequestAdapterOptions const* options)
+// {
+// 	WGPURequestAdapterOptions options = {0};
+// 	options.compatibleSurface = surface;
+	
+// 	// ==================================================
+	
+// 	// This is the function signature from webgpu.h :
+// 	// wgpuInstanceRequestAdapter(
+// 	//     WGPUInstance instance,
+// 	//     WGPU_NULLABLE WGPURequestAdapterOptions const* options,
+// 	//     WGPURequestAdapterCallbackInfo callbackInfo
+// 	// )
+
+// 	// this does not agree with tutorial, but checking webgpu.h again:
+// 	// WGPURequestAdapterCallbackInfo {
+//     //     WGPUChainedStruct const * nextInChain;
+// 	//	   WGPUCallbackMode mode;
+// 	//	   WGPURequestAdapterCallback callback;
+// 	//	   WGPU_NULLABLE void* userdata1;
+// 	//	   WGPU_NULLABLE void* userdata2;
+// 	//   } WGPURequestAdapterCallbackInfo WGPU_STRUCTURE_ATTRIBUTE;
+
+// 	UserData userData;
+
+	
+// 	// Let's just zero initialize it and set it to match the previous example
+// 	WGPURequestAdapterCallbackInfo callback_info = {0};
+
+// 	// (WGPURequestAdapterCallback)
+	
+// 	callback_info.callback = (WGPURequestAdapterCallback)onAdapterRequestEnded;
+// 	callback_info.userdata1 = &userData;
+	
+// 	// Changing the call to wgpuInstanceRequestAdapter to agree
+// 	wgpuInstanceRequestAdapter( instance, //equivalent of navigator.gpu
+// 								&options,
+// 								callback_info);
+// 	assert(userData.adapter_request_ended);
+// 	return userData.adapter;
+// }
