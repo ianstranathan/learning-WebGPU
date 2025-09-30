@@ -95,7 +95,6 @@ private:
 	void InitializePipeline();
 	WGPULimits GetRequiredLimits(WGPUAdapter adapter) const;
 	void InitializeBuffers();
-	
 private:
 	// We put here all the variables that are shared between init and main loop
 	GLFWwindow* window;
@@ -105,7 +104,8 @@ private:
 	WGPUTextureFormat surfaceFormat = WGPUTextureFormat_Undefined;
 	WGPURenderPipeline pipeline;
 	WGPUBuffer vertexBuffer;
-	u32 vertexCount;
+    WGPUBuffer indexBuffer;
+    uint32_t indexCount;
 };
 
 int main()
@@ -224,6 +224,7 @@ bool Application::Initialize() {
 void Application::Terminate()
 {
 	wgpuBufferRelease(vertexBuffer);
+	wgpuBufferRelease(indexBuffer);
 	wgpuRenderPipelineRelease(pipeline);
 	wgpuSurfaceUnconfigure(surface);
 	wgpuQueueRelease(queue);
@@ -269,21 +270,39 @@ void Application::MainLoop()
 	// Select which render pipeline to use
 	wgpuRenderPassEncoderSetPipeline(renderPass, pipeline);
 
+	// -------------------- set vertex buffer from webgpu
 	// // Set vertex buffer while encoding the render pass
 	// void wgpuRenderPassEncoderSetVertexBuffer(WGPURenderPassEncoder renderPassEncoder,
 	// 										  uint32_t slot,
 	// 										  WGPUBuffer buffer,
 	// 										  uint64_t offset,
 	// 										  uint64_t size)
-	wgpuRenderPassEncoderSetVertexBuffer(renderPass,
-										 0,
-										 vertexBuffer,
-										 0,
-										 wgpuBufferGetSize(vertexBuffer));
+
+	wgpuRenderPassEncoderSetVertexBuffer(renderPass, 0, vertexBuffer, 0, wgpuBufferGetSize(vertexBuffer));
+
+	// wgpuRenderPassEncoderDraw(renderPass, vertexCount, 1, 0, 0);
 	
-	// Draw 1 instance of a 3-vertices shape
-	// wgpuRenderPassEncoderDraw(renderPass, 3, 1, 0, 0);
-	wgpuRenderPassEncoderDraw(renderPass, vertexCount, 1, 0, 0);
+	// -------------------- set index buffer from webgpu
+	// void wgpuRenderPassEncoderSetIndexBuffer(WGPURenderPassEncoder renderPassEncoder,
+	// 										 WGPUBuffer buffer,
+	// 										 WGPUIndexFormat format,
+	// 										 uint64_t offset,
+	// 										 uint64_t size)
+	wgpuRenderPassEncoderSetIndexBuffer( renderPass,
+										 indexBuffer,
+										 WGPUIndexFormat_Uint16, // notice this doesn't match his choice
+										 0,
+										 wgpuBufferGetSize( indexBuffer));
+
+	// void wgpuRenderPassEncoderDrawIndexed(WGPURenderPassEncoder renderPassEncoder,
+	// 									  uint32_t indexCount,
+	// 									  uint32_t instanceCount,
+	// 									  uint32_t firstIndex,
+	// 									  int32_t baseVertex,
+	// 									  uint32_t firstInstance)
+
+	wgpuRenderPassEncoderDrawIndexed(renderPass, indexCount, 1, 0, 0, 0);
+	// --------------------------------------------------
 	
 	wgpuRenderPassEncoderEnd(renderPass);
 	wgpuRenderPassEncoderRelease(renderPass);
@@ -373,11 +392,12 @@ struct VertexOutput {
 };
 
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
-	//                         ^^^^^^^^^^^^ We return a custom struct
-	var out: VertexOutput; // create the output struct
-	out.position = vec4f(in.position, 0.0, 1.0); // same as what we used to directly return
-	out.color = in.color; // forward the color attribute to the fragment shader
+fn vs_main(in: VertexInput) -> VertexOutput
+{
+	var out: VertexOutput;
+    var doubled_vertex_pos = 2.0 * in.position;
+	out.position = vec4f(doubled_vertex_pos, 0.0, 1.0);
+	out.color = in.color;
 	return out;
 }
 
@@ -598,34 +618,46 @@ WGPULimits Application::GetRequiredLimits(WGPUAdapter adapter) const
 	return requiredLimits;
 }
 
-void Application::InitializeBuffers()
-{
-	// Vertex buffer data
-	std::vector<float> vertexData = {
-		// x0,  y0,  r0,  g0,  b0
-
-		// triangle 1
-		-0.5f, -0.5, 1.0, 0.0, 0.0,
-		+0.5f, +0.5, 0.0, 1.0, 0.0,
-		-0.5f, +0.5, 0.0, 0.0, 1.0,
-		// triangle 2
-		+0.5f, -0.5, 1.0, 1.0, 0.0,
-		+0.5f, +0.5, 1.0, 0.0, 1.0,
-		-0.5f, -0.5, 0.0, 1.0, 1.0
+void Application::InitializeBuffers() {
+	// Define point data
+	// The de-duplicated list of point positions
+	std::vector<float> pointData = {
+		// x,   y,     r,   g,   b
+		-0.5, -0.5,   1.0, 0.0, 0.0, // Point #0
+		+0.5, -0.5,   0.0, 1.0, 0.0, // Point #1
+		+0.5, +0.5,   0.0, 0.0, 1.0, // Point #2
+		-0.5, +0.5,   1.0, 1.0, 0.0  // Point #3
 	};
+
+	// Define index data
+	// This is a list of indices referencing positions in the pointData
+	std::vector<uint16_t> indexData = {
+		0, 1, 2, // Triangle #0 connects points #0, #1 and #2
+		0, 2, 3  // Triangle #1 connects points #0, #2 and #3
+	};
+
+	// We now store the index count rather than the vertex count
+    indexCount = static_cast<uint32_t>(indexData.size());
 	
-	vertexCount = static_cast<u32>(vertexData.size() / 5);
-	
-	// Create vertex buffer
+	// Create point buffer
 	WGPUBufferDescriptor bufferDesc{};
 	bufferDesc.nextInChain = nullptr;
-	bufferDesc.size = vertexData.size() * sizeof(float);
+	bufferDesc.size = pointData.size() * sizeof(float);
 	bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex; // Vertex usage here!
 	bufferDesc.mappedAtCreation = false;
 	vertexBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
 	
 	// Upload geometry data to the buffer
-	wgpuQueueWriteBuffer(queue, vertexBuffer, 0, vertexData.data(), bufferDesc.size);
+	wgpuQueueWriteBuffer(queue, vertexBuffer, 0, pointData.data(), bufferDesc.size);
+
+	// Create index buffer
+	// (we reuse the bufferDesc initialized for the vertexBuffer)
+	bufferDesc.size = indexData.size() * sizeof(uint16_t);
+	bufferDesc.size = (bufferDesc.size + 3) & ~3; // round up to the next multiple of 4
+	bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index;;
+	indexBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
+
+	wgpuQueueWriteBuffer(queue, indexBuffer, 0, indexData.data(), bufferDesc.size);
 }
 
 #endif // end debug block
