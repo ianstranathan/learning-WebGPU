@@ -368,20 +368,13 @@ WGPUTextureView Application::GetNextSurfaceTextureView()
 // (Memoized version of the state necessary to draw something)
 
 const char* shader_code_str = R"(
-/**
- * A structure with fields labeled with vertex attribute locations can be used
- * as input to the entry point of a shader.
- */
+
 struct VertexInput {
 	@location(0) position: vec2f,
 	@location(1) color: vec3f,
+    @location(2) UV: vec2f
 };
 
-/**
- * A structure with fields labeled with builtins and locations can also be used
- * as *output* of the vertex shader, which is also the input of the fragment
- * shader.
- */
 struct VertexOutput {
 	@builtin(position) position: vec4f,
 	// The location here does not refer to a vertex attribute, it just means
@@ -389,6 +382,7 @@ struct VertexOutput {
 	// (It can also refer to another field of another struct that would be used
 	// as input to the fragment shader.)
 	@location(0) color: vec3f,
+    @location(1) UV: vec2f,
 };
 
 @vertex
@@ -398,13 +392,20 @@ fn vs_main(in: VertexInput) -> VertexOutput
     var doubled_vertex_pos = 2.0 * in.position;
 	out.position = vec4f(doubled_vertex_pos, 0.0, 1.0);
 	out.color = in.color;
+    out.UV = in.UV;
 	return out;
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-	//     ^^^^^^^^^^^^^^^^ Use for instance the same struct as what the vertex outputs
-	return vec4f(in.color, 1.0); // use the interpolated color coming from the vertex shader
+fn fs_main(in: VertexOutput) -> @location(0) vec4f
+{
+    var uv: vec2f = 2.0 * in.UV - 1.0;
+    uv.x *= (640.0 / 480.0);
+    let dist: f32 = length(uv);
+	let angle: f32 = atan2(uv.y, uv.x);
+	let v : f32 = smoothstep( 0.3, 0.33, dist + 0.1 * cos(10.0 * angle));
+	let col: vec3f = vec3f( v,v,v);
+    return vec4f(col, 1.0);
 }
 )";
 
@@ -493,7 +494,7 @@ void Application::InitializePipeline()
 	// ------------------------- Configure the vertex pipeline
 	// We use one vertex buffer
 	WGPUVertexBufferLayout vertexBufferLayout{};
-	std::vector<WGPUVertexAttribute> vertexAttribs(2);
+	std::vector<WGPUVertexAttribute> vertexAttribs(3);
 
 	// ------------------------- position attrib
 	vertexAttribs[0].shaderLocation = 0; // @location(0)
@@ -505,11 +506,16 @@ void Application::InitializePipeline()
 	vertexAttribs[1].format = WGPUVertexFormat_Float32x3; // vec3 in shader
 	vertexAttribs[1].offset = 2 * sizeof(float); // offset past the vertex data
 
+	// ------------------------- uv attrib
+	vertexAttribs[2].shaderLocation = 2; // @location(1)
+	vertexAttribs[2].format = WGPUVertexFormat_Float32x2; // vec2 in shader
+	vertexAttribs[2].offset = 5 * sizeof(float); // offset past the color data
+
 	// 
 	vertexBufferLayout.attributeCount = static_cast<u32>(vertexAttribs.size());
 	vertexBufferLayout.attributes = vertexAttribs.data();
 
-	vertexBufferLayout.arrayStride = 5 * sizeof(float);
+	vertexBufferLayout.arrayStride = 7 * sizeof(float);
 	vertexBufferLayout.stepMode = WGPUVertexStepMode_Vertex;
 	
 	pipelineDesc.vertex.bufferCount = 1;
@@ -622,11 +628,11 @@ void Application::InitializeBuffers() {
 	// Define point data
 	// The de-duplicated list of point positions
 	std::vector<float> pointData = {
-		// x,   y,     r,   g,   b
-		-0.5, -0.5,   1.0, 0.0, 0.0, // Point #0
-		+0.5, -0.5,   0.0, 1.0, 0.0, // Point #1
-		+0.5, +0.5,   0.0, 0.0, 1.0, // Point #2
-		-0.5, +0.5,   1.0, 1.0, 0.0  // Point #3
+		// x,   y,     r,   g,   b       u,   v
+		-0.5, -0.5,   1.0, 0.0, 0.0,    0.0, 0.0, // Point #0
+		+0.5, -0.5,   0.0, 1.0, 0.0,    1.0, 0.0, // Point #1
+		+0.5, +0.5,   0.0, 0.0, 1.0,    1.0, 1.0, // Point #2
+		-0.5, +0.5,   1.0, 1.0, 0.0,    0.0, 1.0, // Point #3
 	};
 
 	// Define index data
