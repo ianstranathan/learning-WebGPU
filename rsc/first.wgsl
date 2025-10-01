@@ -1,3 +1,27 @@
+struct VertexInput {
+	@location(0) position: vec2f,
+	@location(1) color: vec3f,
+    @location(2) UV: vec2f
+};
+
+struct VertexOutput {
+	@builtin(position) position: vec4f,
+	// to be handled by the rasterizer
+	@location(0) color: vec3f,
+    @location(1) UV: vec2f,
+};
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput
+{
+	var out: VertexOutput;
+    var doubled_vertex_pos = 2.0 * in.position;
+	out.position = vec4f(doubled_vertex_pos, 0.0, 1.0);
+	out.color = in.color;
+    out.UV = in.UV;
+	return out;
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
