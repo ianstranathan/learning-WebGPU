@@ -1,21 +1,20 @@
 
-This repository contains my reference code for following Elie Michel's WebGPU c++ guide.
+This repository contains my reference code for following [Elie Michel's WebGPU c++ guide](https://eliemichel.github.io/LearnWebGPU/index.html)
 
-I wanted as minimal setup as possible for learning purposed/ sanity and unfortunately this forced a lot of stumbling and refactoring.
-(I chose not to use Dawn & the webgpu-native standard has changed a little)
+I wanted as minimal a setup as possible for learning purposes.
+This unfortunately caused some stumbling / correcting.
+(no Dawn or make system + the webgpu-native standard having changed since the tutorial was written forced a lot of small corrections but was educational)
 
-
-Please note this will only work on windows
-==================================================
 Dependencies:
 --------------------------------------------------
-### External Libraries:
+Libraries:
 - GLFW
 - webgpu
 
-I built both from source as I kept running into C/C++ runtime library issues using prebuilt binaries
+Maybe build both from source (I kept running into c/c++ runtime library issues using prebuilt binaries)
 
-The rest should be available, as an example using MSCV:
-cl /MT /EHsc /std:c++20 ../src/unity.cpp /I"..\include" /link /LIBPATH:"..\lib" Shell32.lib runtimeobject.lib oleaut32.lib opengl32.lib Gdi32.lib d3dcompiler.lib ole32.lib User32.lib ws2_32.lib userenv.lib ntdll.lib propsys.lib wgpu_native.lib glfw3.lib
+Note.
+The glfw3webgpu.c wrapper to get a glfw surface wasn't working out of the box so I dug out the windows specific stuff.
+
 
 
