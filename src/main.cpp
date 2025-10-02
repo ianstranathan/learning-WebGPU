@@ -1,3 +1,18 @@
+#include <windows.h>
+#include <iostream>
+#include <string>
+#include <thread>
+#include <atomic>
+#include <functional>
+#include <conio.h>  // For _kbhit() and _getch()
+
+
+
+#ifndef DEBUG
+// ====================================================================================================
+// ====================================================================================================
+
+
 #include <iostream>
 #include <vector>
 #define GLFW_INCLUDE_NONE
@@ -18,7 +33,7 @@ typedef int32_t i32;
   Specifying the byte stride of a vertex is approaching the limit of a magic number
    See: definition of vertexCount & vertexBufferLayout.arrayStride
  */
-#ifndef DEBUG
+
 
 void device_lost_callback(WGPUDeviceLostReason reason, char const* message, void* /* pUserData */)
 {
@@ -314,10 +329,10 @@ void Application::MainLoop()
 	WGPUCommandBuffer command = wgpuCommandEncoderFinish(encoder, &cmdBufferDescriptor);
 	wgpuCommandEncoderRelease(encoder);
 
-	std::cout << "Submitting command..." << std::endl;
+	//std::cout << "Submitting command..." << std::endl;
 	wgpuQueueSubmit(queue, 1, &command);
 	wgpuCommandBufferRelease(command);
-	std::cout << "Command submitted." << std::endl;
+	//std::cout << "Command submitted." << std::endl;
 
 	// At the end of the frame
 	wgpuTextureViewRelease(targetView);
