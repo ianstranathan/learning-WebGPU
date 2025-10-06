@@ -22,6 +22,7 @@ fn vs_main(in: VertexInput) -> VertexOutput
 	return out;
 }
 
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
