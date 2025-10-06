@@ -7,14 +7,11 @@
 #include <conio.h>  // For _kbhit() and _getch()
 
 
-
 #ifndef DEBUG
 // ====================================================================================================
 // ====================================================================================================
 
 
-#include <iostream>
-#include <vector>
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu.h>
@@ -33,63 +30,6 @@ typedef int32_t i32;
   Specifying the byte stride of a vertex is approaching the limit of a magic number
    See: definition of vertexCount & vertexBufferLayout.arrayStride
  */
-
-
-void device_lost_callback(WGPUDeviceLostReason reason, char const* message, void* /* pUserData */)
-{
-	std::cout << "Device lost: reason " << reason;
-	if (message) std::cout << " (" << message << ")";
-	std::cout << std::endl;
-}
-
-void on_device_error (WGPUErrorType type, char const* message, void* /* pUserData */)
-{
-	std::cout << "Uncaptured device error: type " << type;
-	if (message) std::cout << " (" << message << ")";
-	std::cout << std::endl;
-}
-
-// Add a callback to monitor the moment queued work finished
-void onQueueWorkDone(WGPUQueueWorkDoneStatus status, void*)
-{
-	std::cout << "Queued work finished with status: " << status << std::endl;
-}
-
-void setDefault(WGPULimits &limits)
-{
-	limits.maxTextureDimension1D = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxTextureDimension2D = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxTextureDimension3D = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxTextureArrayLayers = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxBindGroups = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxBindGroupsPlusVertexBuffers = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxBindingsPerBindGroup = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxDynamicUniformBuffersPerPipelineLayout = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxDynamicStorageBuffersPerPipelineLayout = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxSampledTexturesPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxSamplersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxStorageBuffersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxStorageTexturesPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxUniformBuffersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxUniformBufferBindingSize = WGPU_LIMIT_U64_UNDEFINED;
-	limits.maxStorageBufferBindingSize = WGPU_LIMIT_U64_UNDEFINED;
-	limits.minUniformBufferOffsetAlignment = WGPU_LIMIT_U32_UNDEFINED;
-	limits.minStorageBufferOffsetAlignment = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxVertexBuffers = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxBufferSize = WGPU_LIMIT_U64_UNDEFINED;
-	limits.maxVertexAttributes = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxVertexBufferArrayStride = WGPU_LIMIT_U32_UNDEFINED;
-	// limits.maxInterStageShaderComponents = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxInterStageShaderVariables = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxColorAttachments = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxColorAttachmentBytesPerSample = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupStorageSize = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeInvocationsPerWorkgroup = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupSizeX = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupSizeY = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupSizeZ = WGPU_LIMIT_U32_UNDEFINED;
-	limits.maxComputeWorkgroupsPerDimension = WGPU_LIMIT_U32_UNDEFINED;
-}
 
 class Application {	
 public:
@@ -110,6 +50,10 @@ private:
 	void InitializePipeline();
 	WGPULimits GetRequiredLimits(WGPUAdapter adapter) const;
 	void InitializeBuffers();
+	//WGPUShaderModule make_shader_module( const char*  shader_src);
+	WGPUShaderModule make_shader_module( const std::string shader_src);
+	// callback function from file watcher
+	//void on_wgsl_toy_shader_changed( const char* shader_src);
 private:
 	// We put here all the variables that are shared between init and main loop
 	GLFWwindow* window;
@@ -231,7 +175,9 @@ bool Application::Initialize() {
 	// Release the adapter only after it has been fully utilized
 	wgpuAdapterRelease(adapter);
 
-	InitializePipeline();
+	// this shouldn't fail silently
+	// NOTE: Invalid Handle on Failure returns a nullptr
+	InitializePipeline(); 
 	InitializeBuffers();
 	return true;
 }
@@ -377,54 +323,12 @@ WGPUTextureView Application::GetNextSurfaceTextureView()
 }
 
 
-// Overall, we're just trying to:
-// Select which render pipeline to use and drawing
-// The work is configuring the a pipeline object
-// (Memoized version of the state necessary to draw something)
 
-const char* shader_code_str = R"(
+const std::string shader_code_str = load_shader_from_file( "../rsc/shaders/first.wgsl" );
 
-struct VertexInput {
-	@location(0) position: vec2f,
-	@location(1) color: vec3f,
-    @location(2) UV: vec2f
-};
 
-struct VertexOutput {
-	@builtin(position) position: vec4f,
-	// The location here does not refer to a vertex attribute, it just means
-	// that this field must be handled by the rasterizer.
-	// (It can also refer to another field of another struct that would be used
-	// as input to the fragment shader.)
-	@location(0) color: vec3f,
-    @location(1) UV: vec2f,
-};
-
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput
-{
-	var out: VertexOutput;
-    var doubled_vertex_pos = 2.0 * in.position;
-	out.position = vec4f(doubled_vertex_pos, 0.0, 1.0);
-	out.color = in.color;
-    out.UV = in.UV;
-	return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f
-{
-    var uv: vec2f = 2.0 * in.UV - 1.0;
-    uv.x *= (640.0 / 480.0);
-    let dist: f32 = length(uv);
-	let angle: f32 = atan2(uv.y, uv.x);
-	let v : f32 = smoothstep( 0.3, 0.33, dist + 0.1 * cos(10.0 * angle));
-	let col: vec3f = vec3f( v,v,v);
-    return vec4f(col, 1.0);
-}
-)";
-
-void Application::InitializePipeline()
+//WGPUShaderModule Application:: make_shader_module( const char*  shader_src)
+WGPUShaderModule Application:: make_shader_module( const std::string shader_src)
 {
 	// --------------------------------------------------
 	// Reference from webgpu.h
@@ -448,11 +352,13 @@ void Application::InitializePipeline()
 	// }
 	// --------------------------------------------------
 	
+	assert(device && "Must have logical handle to a device to make a shader");
 	// Load the shader module
-	WGPUShaderSourceWGSL wgsl_desc = {0};
-	wgsl_desc.chain = {0};
+	WGPUShaderSourceWGSL wgsl_desc{};
+	// wgsl_desc.chain = {0};
 	wgsl_desc.chain.sType = WGPUSType_ShaderSourceWGSL;
-	wgsl_desc.code = label_maker(shader_code_str);
+	//wgsl_desc.code = label_maker( shader_src );
+	wgsl_desc.code = label_maker( shader_src.c_str() );
 
 	// We use the extension mechanism to specify the WGSL part
 	// of the shader module descriptor
@@ -464,9 +370,12 @@ void Application::InitializePipeline()
 		};
 	
 	// Connect the chain
-	WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+	return wgpuDeviceCreateShaderModule(device, &shaderDesc);;
+}
 
 
+void Application::InitializePipeline()
+{
 	// --------------------------------------------------
 	// Reference from webgpu.h
 
@@ -503,9 +412,10 @@ void Application::InitializePipeline()
 	// } WGPUVertexState WGPU_STRUCTURE_ATTRIBUTE;
 
 	// ------------------------- Create the render pipeline
-	WGPURenderPipelineDescriptor pipelineDesc = {0};
+	WGPURenderPipelineDescriptor pipelineDesc{};
 
-
+	WGPUShaderModule shaderModule = make_shader_module( shader_code_str );
+	
 	// ------------------------- Configure the vertex pipeline
 	// We use one vertex buffer
 	WGPUVertexBufferLayout vertexBufferLayout{};
@@ -536,14 +446,6 @@ void Application::InitializePipeline()
 	pipelineDesc.vertex.bufferCount = 1;
 	pipelineDesc.vertex.buffers = &vertexBufferLayout;
 	
-
-	// // We do not use any vertex buffer for this first simplistic example
-	// pipelineDesc.vertex.bufferCount = 0;
-	// pipelineDesc.vertex.buffers = nullptr;
-
-	// NB: We define the 'shaderModule' in the second part of this chapter.
-	// Here we tell that the programmable vertex shader stage is described
-	// by the function called 'vs_main' in that module.
 	pipelineDesc.vertex.module = shaderModule;
 	pipelineDesc.vertex.entryPoint = label_maker("vs_main");
 	pipelineDesc.vertex.constantCount = 0;
@@ -613,6 +515,27 @@ void Application::InitializePipeline()
 	wgpuShaderModuleRelease(shaderModule);
 }
 
+// void Application::on_wgsl_toy_shader_changed( const char* shader_src)
+// {
+// 	// --------------------
+// 	// make new shader module
+// 	WGPUShaderModule shaderModule = make_shader_module( shader_src );
+
+// 	// --------------------
+// 	// update the cached pipeline descripter fragment and vertex states
+// 	pipelineDesc.vertex.module   = shaderModule;
+// 	pipelineDesc.fragment.module = shaderModule;
+	
+// 	if (pipeline != nullptr)
+// 	{
+// 		wgpuRenderPipelineRelease(pipeline);
+// 		pipeline = nullptr; // Set to nullptr for safety
+// 	}
+	
+// 	pipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
+// 	wgpuShaderModuleRelease(shaderModule);
+// }
+	
 WGPULimits Application::GetRequiredLimits(WGPUAdapter adapter) const
 {
 	// Get adapter supported limits, in case we need them

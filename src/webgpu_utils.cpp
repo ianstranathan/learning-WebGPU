@@ -336,199 +336,59 @@ WGPUStringView label_maker(const char* _label)
 }
 
 // ====================================================================================================
-// MINE
-// ----------------------------------------------------------------------------------------------------
 
-// #include <iostream>
-// #include <cstring>
-// #include <cassert>
-// #include "webgpu/webgpu.h"
+void device_lost_callback(WGPUDeviceLostReason reason, char const* message, void* /* pUserData */)
+{
+	std::cout << "Device lost: reason " << reason;
+	if (message) std::cout << " (" << message << ")";
+	std::cout << std::endl;
+}
 
+void on_device_error (WGPUErrorType type, char const* message, void* /* pUserData */)
+{
+	std::cout << "Uncaptured device error: type " << type;
+	if (message) std::cout << " (" << message << ")";
+	std::cout << std::endl;
+}
 
-// // TODO: add onDeviceError to device initialization
-// // ====================================================================================================
+// Add a callback to monitor the moment queued work finished
+void onQueueWorkDone(WGPUQueueWorkDoneStatus status, void*)
+{
+	std::cout << "Queued work finished with status: " << status << std::endl;
+}
 
-// WGPUStringView label_maker(const char* _label)
-// {
-// 	WGPUStringView ret = {.data = _label,
-// 						  .length = std::strlen(_label)};
-// 	return ret;
-// }
-
- 
-// // typedef struct WGPUDeviceDescriptor {
-// 	// 	WGPUChainedStruct const * nextInChain;
-// 	// 	/**
-// 	// 	 * This is a \ref NonNullInputString.
-// 	// 	 */
-// 	// 	WGPUStringView label;
-// 	// 	size_t requiredFeatureCount;
-// 	// 	WGPUFeatureName const * requiredFeatures;
-// 	// 	WGPU_NULLABLE WGPULimits const * requiredLimits;
-// 	// 	WGPUQueueDescriptor defaultQueue;
-// 	// 	WGPUDeviceLostCallbackInfo deviceLostCallbackInfo;
-// 	// 	WGPUUncapturedErrorCallbackInfo uncapturedErrorCallbackInfo;
-// 	// } WGPUDeviceDescriptor WGPU_STRUCTURE_ATTRIBUTE;
-
-// 	// ====================
-// 	// typedef struct WGPUStringView {
-// 	// 	char const * WGPU_NULLABLE data;
-// 	// 	size_t length;
-// 	// } WGPUStringView;
-
-// 	//====================
-// 	// Typedef struct WGPUDeviceLostCallbackInfo {
-// 	// 	WGPUChainedStruct const * nextInChain;
-// 	// 	WGPUCallbackMode mode;
-// 	// 	WGPUDeviceLostCallback callback;
-// 	// 	WGPU_NULLABLE void* userdata1;
-// 	// 	WGPU_NULLABLE void* userdata2;
-// 	// } WGPUDeviceLostCallbackInfo WGPU_STRUCTURE_ATTRIBUTE;
-
-// void onDeviceLost (WGPUDeviceLostReason reason,
-// 				   char const* message,
-// 				   void* /* pUserData */)
-// {
-// 	std::cout << "Device lost: reason " << reason;
-// 	if (message) std::cout << " (" << message << ")";
-// 	std::cout << std::endl;
-// };
-
-
-// WGPUDeviceDescriptor make_device_descriptor( const char* _label)	
-// {
-// 	WGPUDeviceDescriptor deviceDesc = {0};
-// 	WGPUStringView deviceDescLabel = {.data = _label,
-// 									  .length = std::strlen(_label)};
-// 	WGPUStringView defaultQueueLabel = {.data = "The default queue",
-// 									  .length = std::strlen("The default queue")};
-// 	deviceDesc.label = deviceDescLabel;
-// 	deviceDesc.defaultQueue.label = defaultQueueLabel;
-// 	WGPUDeviceLostCallbackInfo _deviceCallbackInfo = {0};
-// 	_deviceCallbackInfo.callback = (WGPUDeviceLostCallback)onDeviceLost;
-// 	deviceDesc.deviceLostCallbackInfo = _deviceCallbackInfo;
-// 	return deviceDesc;
-// }
-	
-
-
-// // Common ====================================================================================================
-// struct UserData {
-// 	WGPUAdapter adapter = nullptr;
-// 	WGPUDevice  device  = nullptr;
-// 	bool adapter_request_ended = false;
-// 	bool device_request_ended = false;
-// };
-
-// void onDeviceRequestEnded (WGPURequestDeviceStatus status,
-// 						  WGPUDevice device,
-// 						  char const* message,
-// 						  void * pUserData)
-// {
-// 	UserData& userData = *reinterpret_cast<UserData*>(pUserData);
-// 	if (status == WGPURequestDeviceStatus_Success)
-// 	{
-// 		userData.device = device;
-// 	}
-// 	else
-// 	{
-// 		std::cout << "Could not get WebGPU device: " << message << std::endl;
-// 	}
-// 	userData.device_request_ended = true;
-// };
-
-
-// // Device ====================================================================================================
-// WGPUDevice requestDeviceSync(WGPUAdapter adapter,
-// 							 WGPUDeviceDescriptor const* descriptor)
-// {	
-// 	UserData userData;
-
-// 	// -- From webgpu.h
-// 	// struct WGPURequestDeviceCallbackInfo
-// 	// {
-// 	// 	WGPUChainedStruct const * nextInChain;
-// 	// 	WGPUCallbackMode mode;
-// 	// 	WGPURequestDeviceCallback callback;
-// 	// 	WGPU_NULLABLE void* userdata1;
-// 	// 	WGPU_NULLABLE void* userdata2;
-// 	// }
-// 	WGPURequestDeviceCallbackInfo callback_info  = {0};
-// 	callback_info.callback = (WGPURequestDeviceCallback)onDeviceRequestEnded;
-// 	callback_info.userdata1 = &userData;
-
-// 	// -- From webgpu.h
-// 	// wgpuAdapterRequestDevice(WGPUAdapter adapter,
-// 	// 						 WGPU_NULLABLE WGPUDeviceDescriptor const * descriptor,
-// 	// 						 WGPURequestDeviceCallbackInfo callbackInfo)
-// 	wgpuAdapterRequestDevice(
-// 		adapter,
-// 		descriptor,
-// 		callback_info
-// 	);
-
-// 	assert(userData.device_request_ended);
-
-// 	return userData.device;
-// }
-
-// void onAdapterRequestEnded (WGPURequestAdapterStatus status,
-// 							WGPUAdapter adapter,
-// 							char const* message,
-// 							void* pUserData)
-// {
-// 	// wgpuInstanceRequestAdapter expects a (void*) => cast userdata to a void* then undo that inside callback
-// 	UserData& userData = *reinterpret_cast<UserData*>(pUserData);
-// 	if (status == WGPURequestAdapterStatus_Success) {
-// 		userData.adapter = adapter;
-// 	}
-// 	else
-// 	{
-// 		std::cout << "Could not get WebGPU adapter: " << message << std::endl;
-// 	}
-// 	userData.adapter_request_ended = true;
-// };
-
-// //  -- NOTE: 
-// WGPUAdapter requestAdapterSync(WGPUInstance instance, WGPUSurface surface)
-// 							   //WGPURequestAdapterOptions const* options)
-// {
-// 	WGPURequestAdapterOptions options = {0};
-// 	options.compatibleSurface = surface;
-	
-// 	// ==================================================
-	
-// 	// This is the function signature from webgpu.h :
-// 	// wgpuInstanceRequestAdapter(
-// 	//     WGPUInstance instance,
-// 	//     WGPU_NULLABLE WGPURequestAdapterOptions const* options,
-// 	//     WGPURequestAdapterCallbackInfo callbackInfo
-// 	// )
-
-// 	// this does not agree with tutorial, but checking webgpu.h again:
-// 	// WGPURequestAdapterCallbackInfo {
-//     //     WGPUChainedStruct const * nextInChain;
-// 	//	   WGPUCallbackMode mode;
-// 	//	   WGPURequestAdapterCallback callback;
-// 	//	   WGPU_NULLABLE void* userdata1;
-// 	//	   WGPU_NULLABLE void* userdata2;
-// 	//   } WGPURequestAdapterCallbackInfo WGPU_STRUCTURE_ATTRIBUTE;
-
-// 	UserData userData;
-
-	
-// 	// Let's just zero initialize it and set it to match the previous example
-// 	WGPURequestAdapterCallbackInfo callback_info = {0};
-
-// 	// (WGPURequestAdapterCallback)
-	
-// 	callback_info.callback = (WGPURequestAdapterCallback)onAdapterRequestEnded;
-// 	callback_info.userdata1 = &userData;
-	
-// 	// Changing the call to wgpuInstanceRequestAdapter to agree
-// 	wgpuInstanceRequestAdapter( instance, //equivalent of navigator.gpu
-// 								&options,
-// 								callback_info);
-// 	assert(userData.adapter_request_ended);
-// 	return userData.adapter;
-// }
+void setDefault(WGPULimits &limits)
+{
+	limits.maxTextureDimension1D = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxTextureDimension2D = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxTextureDimension3D = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxTextureArrayLayers = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxBindGroups = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxBindGroupsPlusVertexBuffers = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxBindingsPerBindGroup = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxDynamicUniformBuffersPerPipelineLayout = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxDynamicStorageBuffersPerPipelineLayout = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxSampledTexturesPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxSamplersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxStorageBuffersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxStorageTexturesPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxUniformBuffersPerShaderStage = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxUniformBufferBindingSize = WGPU_LIMIT_U64_UNDEFINED;
+	limits.maxStorageBufferBindingSize = WGPU_LIMIT_U64_UNDEFINED;
+	limits.minUniformBufferOffsetAlignment = WGPU_LIMIT_U32_UNDEFINED;
+	limits.minStorageBufferOffsetAlignment = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxVertexBuffers = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxBufferSize = WGPU_LIMIT_U64_UNDEFINED;
+	limits.maxVertexAttributes = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxVertexBufferArrayStride = WGPU_LIMIT_U32_UNDEFINED;
+	// limits.maxInterStageShaderComponents = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxInterStageShaderVariables = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxColorAttachments = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxColorAttachmentBytesPerSample = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxComputeWorkgroupStorageSize = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxComputeInvocationsPerWorkgroup = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxComputeWorkgroupSizeX = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxComputeWorkgroupSizeY = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxComputeWorkgroupSizeZ = WGPU_LIMIT_U32_UNDEFINED;
+	limits.maxComputeWorkgroupsPerDimension = WGPU_LIMIT_U32_UNDEFINED;
+}
