@@ -392,3 +392,67 @@ void setDefault(WGPULimits &limits)
 	limits.maxComputeWorkgroupSizeZ = WGPU_LIMIT_U32_UNDEFINED;
 	limits.maxComputeWorkgroupsPerDimension = WGPU_LIMIT_U32_UNDEFINED;
 }
+
+// ----------------------------------------------------------------------------------------------------
+// -- Shader utils
+
+void compilationCallback(WGPUCompilationInfoRequestStatus status, const WGPUCompilationInfo* info, void* userData)
+{
+
+	// typedef struct WGPUCompilationInfo {
+	// 	WGPUChainedStruct const * nextInChain;
+	// 	size_t messageCount;
+	// 	WGPUCompilationMessage const * messages;
+	// } WGPUCompilationInfo WGPU_STRUCTURE_ATTRIBUTE;
+
+	
+    using namespace std;
+
+    if (status != WGPUCompilationInfoRequestStatus_Success) {
+        cerr << "Failed to retrieve shader compilation info (status: " << status << ")" << endl;
+        return;
+    }
+
+    if (info->messageCount == 0)
+	{
+        cout << "Shader compilation completed, but no messages were returned." << endl;
+        return;
+    }
+
+    bool hasError = false;
+    cout << "Shader Compilation Info:" << endl;
+
+    for (size_t i = 0; i < info->messageCount; ++i) {
+        const WGPUCompilationMessage& msg = info->messages[i];
+
+        string typeStr;
+        std::ostream& out = (msg.type == WGPUCompilationMessageType_Error) ? cerr : cout;
+
+        switch (msg.type) {
+            case WGPUCompilationMessageType_Error:
+                typeStr = "Error";
+                hasError = true;
+                break;
+            case WGPUCompilationMessageType_Warning:
+                typeStr = "Warning";
+                break;
+            case WGPUCompilationMessageType_Info:
+                typeStr = "Info";
+                break;
+            default:
+                typeStr = "Unknown";
+        }
+
+        out << "  [" << typeStr << "] Line " << msg.lineNum
+			<< ", Pos " << msg.linePos << ": "
+			<< msg.message.data
+			<< std::endl;
+    }
+
+    if (hasError)
+	{
+        cerr << "Shader compilation failed due to errors above." << endl;
+    } else {
+        cout << "Shader compiled successfully (no errors)." << endl;
+    }
+}
