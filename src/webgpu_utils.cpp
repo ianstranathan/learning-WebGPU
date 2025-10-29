@@ -1,31 +1,4 @@
 
-/**
- * This file is part of the "Learn WebGPU for C++" book.
- *   https://github.com/eliemichel/LearnWebGPU
- *
- * MIT License
- * Copyright (c) 2022-2024 Elie Michel
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
-
-
 #include <iostream>
 #include <vector>
 #include <cassert>
@@ -391,6 +364,68 @@ void setDefault(WGPULimits &limits)
 	limits.maxComputeWorkgroupSizeY = WGPU_LIMIT_U32_UNDEFINED;
 	limits.maxComputeWorkgroupSizeZ = WGPU_LIMIT_U32_UNDEFINED;
 	limits.maxComputeWorkgroupsPerDimension = WGPU_LIMIT_U32_UNDEFINED;
+}
+
+void setDefault(WGPUBindGroupLayoutEntry& bindingLayout)
+{
+	// ---------- webgpu-native reference:
+
+	// 	typedef struct WGPUBindGroupLayoutEntry {
+	//     WGPUChainedStruct const * nextInChain;
+	//     uint32_t binding;
+	//     WGPUShaderStage visibility;
+	//     WGPUBufferBindingLayout buffer;
+	//     WGPUSamplerBindingLayout sampler;
+	//     WGPUTextureBindingLayout texture;
+	//     WGPUStorageTextureBindingLayout storageTexture;
+	// } WGPUBindGroupLayoutEntry WGPU_STRUCTURE_ATTRIBUTE;
+
+
+	// typedef struct WGPUBufferBindingLayout {
+	//     WGPUChainedStruct const * nextInChain;
+	//     WGPUBufferBindingType type;
+	//     WGPUBool hasDynamicOffset;
+	//     uint64_t minBindingSize;
+	// } WGPUBufferBindingLayout WGPU_STRUCTURE_ATTRIBUTE;
+
+	// typedef struct WGPUSamplerBindingLayout {
+	//     WGPUChainedStruct const * nextInChain;
+	//     WGPUSamplerBindingType type;
+	// } WGPUSamplerBindingLayout WGPU_STRUCTURE_ATTRIBUTE;
+
+
+	// typedef struct WGPUTextureBindingLayout {
+	//     WGPUChainedStruct const * nextInChain;
+	//     WGPUTextureSampleType sampleType;
+	//     WGPUTextureViewDimension viewDimension;
+	//     WGPUBool multisampled;
+	// } WGPUTextureBindingLayout WGPU_STRUCTURE_ATTRIBUTE;
+
+
+	// typedef struct WGPUStorageTextureBindingLayout {
+	//     WGPUChainedStruct const * nextInChain;
+	//     WGPUStorageTextureAccess access;
+	//     WGPUTextureFormat format;
+	//     WGPUTextureViewDimension viewDimension;
+	// } WGPUStorageTextureBindingLayout WGPU_STRUCTURE_ATTRIBUTE;
+	// --------------------------------------------------
+	
+	bindingLayout.buffer.nextInChain = nullptr;
+	bindingLayout.buffer.type = WGPUBufferBindingType_Undefined;
+	bindingLayout.buffer.hasDynamicOffset = false;
+
+	bindingLayout.sampler.nextInChain = nullptr;
+	bindingLayout.sampler.type = WGPUSamplerBindingType_Undefined;
+
+	bindingLayout.storageTexture.nextInChain = nullptr;
+	bindingLayout.storageTexture.access = WGPUStorageTextureAccess_Undefined;
+	bindingLayout.storageTexture.format = WGPUTextureFormat_Undefined;
+	bindingLayout.storageTexture.viewDimension = WGPUTextureViewDimension_Undefined;
+
+	bindingLayout.texture.nextInChain = nullptr;
+	bindingLayout.texture.multisampled = false;
+	bindingLayout.texture.sampleType = WGPUTextureSampleType_Undefined;
+	bindingLayout.texture.viewDimension = WGPUTextureViewDimension_Undefined;
 }
 
 // ----------------------------------------------------------------------------------------------------

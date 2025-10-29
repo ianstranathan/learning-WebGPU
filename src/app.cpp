@@ -31,7 +31,8 @@ private:
 	void InitializePipeline();
 	WGPULimits GetRequiredLimits(WGPUAdapter adapter) const;
 	void InitializeBuffers();
-
+	void InitializeBindGroups();
+	
 	WGPUShaderModule make_shader_module( const std::string shader_src);
 	
 private:
@@ -46,6 +47,19 @@ private:
     WGPUBuffer indexBuffer;
     uint32_t indexCount;
 
+	// 
+	WGPUBuffer uniformBuffer;
+    WGPUPipelineLayout layout;
+    WGPUBindGroupLayout bindGroupLayout;
+	WGPUBindGroup bindGroup;
+    
+    // // C++ struct matching WGSL layout
+    // struct Uniforms {
+    //     float iTime; // Time in seconds
+    //     float iResolution[3];
+    // };
+    // Uniforms uniforms;
+	
 	std::string shader_src_debug   = load_shader_from_file( "../rsc/shaders/debug.wgsl" );
 	std::string shader_src_wgsltoy = load_shader_from_file( "../rsc/shaders/first.wgsl" );
 };
@@ -144,11 +158,18 @@ bool Application::Initialize()
 	// NOTE: Invalid Handle on Failure returns a nullptr
 	InitializePipeline(); 
 	InitializeBuffers();
+	InitializeBindGroups();
+	
 	return true;
 }
 
 void Application::Terminate()
 {
+	wgpuBindGroupRelease(bindGroup);
+	wgpuPipelineLayoutRelease(layout);
+	wgpuBindGroupLayoutRelease(bindGroupLayout);
+	wgpuBufferRelease(uniformBuffer);
+	
 	wgpuBufferRelease(vertexBuffer);
 	wgpuBufferRelease(indexBuffer);
 	wgpuRenderPipelineRelease(pipeline);
@@ -164,6 +185,9 @@ void Application::MainLoop()
 {
 	glfwPollEvents();
 
+	float t = static_cast<float>(glfwGetTime()); // glfwGetTime returns a double
+	wgpuQueueWriteBuffer(queue, uniformBuffer, 0, &t, sizeof(float));
+ 
 	// Get the next target texture view
 	WGPUTextureView targetView = GetNextSurfaceTextureView();
 	if (!targetView)
@@ -227,6 +251,11 @@ void Application::MainLoop()
 
 
 	// wgpuRenderPassEncoderDraw(renderPass, vertexCount, 1, 0, 0);
+
+	// --------------------------------------------------
+	wgpuRenderPassEncoderSetBindGroup(renderPass, 0, bindGroup, 0, nullptr);
+
+	// --------------------------------------------------
 	wgpuRenderPassEncoderDrawIndexed(renderPass, indexCount, 1, 0, 0, 0);
 	// --------------------------------------------------
 	
@@ -343,7 +372,8 @@ WGPUShaderModule Application:: make_shader_module( const std::string shader_src)
 
 void Application::MakePipeline(const std::string& shader_src="")
 {
-	// this caused little bug where pipeline is actually garbage data initially => class initialization needs a null ptr
+	// this caused little bug where pipeline is actually garbage
+	// data initially => class initialization needs a null ptr
 	if (pipeline)
 	{
 		wgpuRenderPipelineRelease(pipeline);
@@ -459,7 +489,34 @@ void Application::MakePipeline(const std::string& shader_src="")
 	// Default value as well (irrelevant for count = 1 anyways)
 	pipelineDesc.multisample.alphaToCoverageEnabled = false;
 
-	pipelineDesc.layout = nullptr;
+	// --------------------------------------------------
+	// pipelineDesc.layout = nullptr;
+	// Define binding layout
+	WGPUBindGroupLayoutEntry bindingLayout{};
+	//setDefault(bindingLayout);
+	// The binding index as used in the @binding attribute in the shader
+	bindingLayout.binding = 0;
+	// The stage that needs to access this resource
+	bindingLayout.visibility = WGPUShaderStage_Fragment;//WGPUShaderStage_Vertex;
+	bindingLayout.buffer.type = WGPUBufferBindingType_Uniform;
+	bindingLayout.buffer.minBindingSize = 4 * sizeof(float);
+
+	// Create a bind group layout
+	WGPUBindGroupLayoutDescriptor bindGroupLayoutDesc{};
+	bindGroupLayoutDesc.nextInChain = nullptr;
+	bindGroupLayoutDesc.entryCount = 1;
+	bindGroupLayoutDesc.entries = &bindingLayout;
+	bindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &bindGroupLayoutDesc);
+
+	// Create the pipeline layout
+	WGPUPipelineLayoutDescriptor layoutDesc{};
+	layoutDesc.nextInChain = nullptr;
+	layoutDesc.bindGroupLayoutCount = 1;
+	layoutDesc.bindGroupLayouts = &bindGroupLayout;
+	layout = wgpuDeviceCreatePipelineLayout(device, &layoutDesc);
+
+	pipelineDesc.layout = layout;
+	// --------------------------------------------------
 
 	pipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
 
@@ -550,6 +607,45 @@ void Application::InitializeBuffers() {
 	indexBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
 
 	wgpuQueueWriteBuffer(queue, indexBuffer, 0, indexData.data(), bufferDesc.size);
+
+	// Create uniform buffer (reusing bufferDesc from other buffer creations)
+	// The buffer will only contain 1 float with the value of uTime
+	// then 3 floats left empty but needed by alignment constraints
+	bufferDesc.size = 4 * sizeof(float);
+
+	// Make sure to flag the buffer as BufferUsage::Uniform
+	bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform;
+
+	bufferDesc.mappedAtCreation = false;
+	uniformBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
+
+	float currentTime = 1.0f;
+	wgpuQueueWriteBuffer(queue, uniformBuffer, 0, &currentTime, sizeof(float));
+}
+
+
+void Application::InitializeBindGroups() {
+	// Create a binding
+	WGPUBindGroupEntry binding{};
+	binding.nextInChain = nullptr;
+	// The index of the binding (the entries in bindGroupDesc can be in any order)
+	binding.binding = 0;
+	// The buffer it is actually bound to
+	binding.buffer = uniformBuffer;
+	// We can specify an offset within the buffer, so that a single buffer can hold
+	// multiple uniform blocks.
+	binding.offset = 0;
+	// And we specify again the size of the buffer.
+	binding.size = 4 * sizeof(float);
+
+	// A bind group contains one or multiple bindings
+	WGPUBindGroupDescriptor bindGroupDesc{};
+	bindGroupDesc.nextInChain = nullptr;
+	bindGroupDesc.layout = bindGroupLayout;
+	// There must be as many bindings as declared in the layout!
+	bindGroupDesc.entryCount = 1;
+	bindGroupDesc.entries = &binding;
+	bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
 }
 
 std::string Application::get_shadertoy_shader()
