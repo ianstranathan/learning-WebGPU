@@ -491,3 +491,65 @@ void compilationCallback(WGPUCompilationInfoRequestStatus status, const WGPUComp
         cout << "Shader compiled successfully (no errors)." << endl;
     }
 }
+
+void ShaderCompilationInfoCallback(
+    WGPUCompilationInfoRequestStatus status, 
+    WGPUCompilationInfo const * compilationInfo, 
+    void* userdata1, 
+    void* userdata2) 
+{
+    // The shaderModule pointer (if passed via userdata1) is now available, 
+    // but the main goal is to process 'compilationInfo'.
+    
+    if (status != WGPUCompilationInfoRequestStatus_Success) {
+        std::cerr << "Error retrieving compilation info: Status " << status << std::endl;
+        return;
+    }
+
+    if (compilationInfo->messageCount > 0) {
+        std::cerr << "--- WGSL Compilation Messages ---" << std::endl;
+        for (uint32_t i = 0; i < compilationInfo->messageCount; ++i) {
+            const WGPUCompilationMessage& msg = compilationInfo->messages[i];
+            
+            // This is the crucial output!
+            std::cerr << "[" 
+                      << (msg.type == WGPUCompilationMessageType_Error ? "ERROR" : "WARNING") 
+                      << "] Line " << msg.lineNum 
+                      << " (Offset " << msg.offset << "): " 
+                      << msg.message.data << std::endl;
+        }
+        std::cerr << "---------------------------------" << std::endl;
+    } else {
+        std::cout << "Shader compiled successfully with no messages." << std::endl;
+    }
+}
+
+// typedef struct WGPUCompilationMessage {
+//     WGPUChainedStruct const * nextInChain;
+//     /**
+//      * A @ref LocalizableHumanReadableMessageString.
+//      *
+//      * This is an \ref OutputString.
+//      */
+//     WGPUStringView message;
+//     /**
+//      * Severity level of the message.
+//      */
+//     WGPUCompilationMessageType type;
+//     /**
+//      * Line number where the message is attached, starting at 1.
+//      */
+//     uint64_t lineNum;
+//     /**
+//      * Offset in UTF-8 code units (bytes) from the beginning of the line, starting at 1.
+//      */
+//     uint64_t linePos;
+//     /**
+//      * Offset in UTF-8 code units (bytes) from the beginning of the shader code, starting at 0.
+//      */
+//     uint64_t offset;
+//     /**
+//      * Length in UTF-8 code units (bytes) of the span the message corresponds to.
+//      */
+//     uint64_t length;
+// } WGPUCompilationMessage WGPU_STRUCTURE_ATTRIBUTE;

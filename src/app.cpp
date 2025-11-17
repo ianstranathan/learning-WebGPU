@@ -2,8 +2,9 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <webgpu/webgpu.h>
-
-
+#include <cassert>
+#include <array>
+#include <cstddef> // offset of
 /*
   TODO:
   Specifying the byte stride of a vertex is approaching the limit of a magic number
@@ -52,14 +53,21 @@ private:
     WGPUPipelineLayout layout;
     WGPUBindGroupLayout bindGroupLayout;
 	WGPUBindGroup bindGroup;
-    
-    // // C++ struct matching WGSL layout
-    // struct Uniforms {
-    //     float iTime; // Time in seconds
-    //     float iResolution[3];
-    // };
-    // Uniforms uniforms;
-	
+
+	// must enforce:
+	// start address to be a multiple of the largest field member
+	// & total size is a multiple of the largest field
+    struct alignas(16) MyUniforms
+	{
+		std::array<float, 4> color; // 16 bytes
+		float time;                 // 4 bytes
+		float _pad[3];              // 12 bytes
+	};
+	static_assert(sizeof(MyUniforms) % 16 == 0);
+	static_assert(sizeof(MyUniforms) == 32, "MyUniforms total size must be 32 bytes.");
+	static_assert(offsetof(MyUniforms, color) == 0, "MyUniforms::color offset must be 0.");
+	static_assert(offsetof(MyUniforms, time) == 16, "MyUniforms::time offset must be 16 bytes.");
+	MyUniforms uniforms;
 	std::string shader_src_debug   = load_shader_from_file( "../rsc/shaders/debug.wgsl" );
 	std::string shader_src_wgsltoy = load_shader_from_file( "../rsc/shaders/first.wgsl" );
 };
@@ -185,8 +193,13 @@ void Application::MainLoop()
 {
 	glfwPollEvents();
 
-	float t = static_cast<float>(glfwGetTime()); // glfwGetTime returns a double
-	wgpuQueueWriteBuffer(queue, uniformBuffer, 0, &t, sizeof(float));
+	// Update uniform buffer
+	uniforms.time = static_cast<float>(glfwGetTime()); // glfwGetTime returns a double
+	// entire 32 byte struct everytime
+	wgpuQueueWriteBuffer(queue, uniformBuffer, 0, &uniforms, sizeof(MyUniforms));
+ 
+	// float t = static_cast<float>(glfwGetTime()); // glfwGetTime returns a double
+	// wgpuQueueWriteBuffer(queue, uniformBuffer, 0, &t, sizeof(float));
  
 	// Get the next target texture view
 	WGPUTextureView targetView = GetNextSurfaceTextureView();
@@ -497,10 +510,14 @@ void Application::MakePipeline(const std::string& shader_src="")
 	// The binding index as used in the @binding attribute in the shader
 	bindingLayout.binding = 0;
 	// The stage that needs to access this resource
-	bindingLayout.visibility = WGPUShaderStage_Fragment;//WGPUShaderStage_Vertex;
-	bindingLayout.buffer.type = WGPUBufferBindingType_Uniform;
-	bindingLayout.buffer.minBindingSize = 4 * sizeof(float);
+	bindingLayout.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
 
+	bindingLayout.buffer.type = WGPUBufferBindingType_Uniform;
+	
+	// bindingLayout.buffer.minBindingSize = 4 * sizeof(float);
+	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
+	//bindingLayout.buffer.minBindingSize = 256;
+	
 	// Create a bind group layout
 	WGPUBindGroupLayoutDescriptor bindGroupLayoutDesc{};
 	bindGroupLayoutDesc.nextInChain = nullptr;
@@ -611,7 +628,8 @@ void Application::InitializeBuffers() {
 	// Create uniform buffer (reusing bufferDesc from other buffer creations)
 	// The buffer will only contain 1 float with the value of uTime
 	// then 3 floats left empty but needed by alignment constraints
-	bufferDesc.size = 4 * sizeof(float);
+	// bufferDesc.size = 4 * sizeof(float);
+	bufferDesc.size = sizeof(MyUniforms);
 
 	// Make sure to flag the buffer as BufferUsage::Uniform
 	bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform;
@@ -619,8 +637,13 @@ void Application::InitializeBuffers() {
 	bufferDesc.mappedAtCreation = false;
 	uniformBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
 
-	float currentTime = 1.0f;
-	wgpuQueueWriteBuffer(queue, uniformBuffer, 0, &currentTime, sizeof(float));
+	//float currentTime = 1.0f;
+	//wgpuQueueWriteBuffer(queue, uniformBuffer, 0, &currentTime, sizeof(float));
+	// Upload the initial value of the uniforms
+	//MyUniforms uniforms;
+	uniforms.time = 1.0f;
+	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
+	wgpuQueueWriteBuffer(queue, uniformBuffer, 0, &uniforms, sizeof(MyUniforms));
 }
 
 
@@ -636,8 +659,9 @@ void Application::InitializeBindGroups() {
 	// multiple uniform blocks.
 	binding.offset = 0;
 	// And we specify again the size of the buffer.
-	binding.size = 4 * sizeof(float);
-
+	//binding.size = 4 * sizeof(float);
+	binding.size = sizeof(MyUniforms);
+	
 	// A bind group contains one or multiple bindings
 	WGPUBindGroupDescriptor bindGroupDesc{};
 	bindGroupDesc.nextInChain = nullptr;
